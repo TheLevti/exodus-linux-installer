@@ -4,133 +4,166 @@
 #
 # https://www.gnu.org/software/bash/manual/bash.html
 #
-# Link this file so that `-eden` appears in the name, and the Eden version
-# will be installed.
-#
 
 # Global variables
 #
-INSTALLER_VERSION=1.0.4
+INSTALLER_VERSION=1.0.0
 PROCESSOR="x64"
-#
-# Check for eden suffix in name of script. If detected, download the Eden version instead.
-#
-if [[ $0 =~ .*-eden.* ]]; then
-  EDEN_DOWNLOAD_INFIX=-eden
-  EDEN_BIN_SUFFIX=Eden
-fi
-
+EXODUS_BIN=exodus
+EXODUS_LOCATION=/usr/local/
 
 if [ $EUID -ne 0 ]; then
-  SUDO=sudo
+    SUDO=sudo
 fi
-
 
 # Generate a base file name, with eden infix, processor and version.
 #
 exodus_filename() {
-  echo 'exodus'${EDEN_DOWNLOAD_INFIX}'-linux-'${PROCESSOR}'-'$1'.zip'
+    echo 'exodus-linux-'${PROCESSOR}'-'$1'.zip'
 }
-
 
 # Generate the download URL
 # This can change, so we have to make sure this is "up to date"
 #
 exodus_download_url() {
-  echo 'https://exodusbin.azureedge.net/releases/'$1
+    echo 'https://exodusbin.azureedge.net/releases/'$1
 }
 
+# Generate the download URL for the svg icon.
+#
+exodus_svg_download_url()
+{
+    echo 'https://www.exodus.io/brand/images/exodus-logo.svg'
+}
+
+# Generate content for the desktop file.
+#
+exodus_desktop_contents()
+{
+    cat << EOF
+[Desktop Entry]
+Type=Application
+Version=${1}
+Name=Exodus
+GenericName=Wallet
+NoDisplay=false
+Comment=Control Your Wealth. Secure, Manage, and Exchange your blockchain assets in one wallet.
+Icon=${EXODUS_LOCATION}share/icons/hicolor/scalable/apps/${EXODUS_BIN}.svg
+Hidden=false
+Exec=${EXODUS_BIN}
+Terminal=false
+Categories=Finance;Network
+Keywords=Crypto;Cryptocurrency;Currency;Wallet;Bitcoin;Ethereum;XRP;Exodus
+
+EOF
+}
 
 # Generate the download target on disk
 #
 exodus_download_target() {
-  mkdir -p $HOME/Downloads
-  echo $HOME'/Downloads/'$1
+    mkdir -p $HOME/Downloads
+    echo $HOME'/Downloads/'$1
 }
-
 
 # Download the Exodus payload from the server, but only
 # download if we don't have it on disk already (-c option)
 #
 exodus_download() {
-  wget -v -c -O $2 $1
+    wget -v -c -O $2 $1
 }
 
-
-# Download and check the exodus package to verify
-# SHA hash
+# Download and check the exodus package to verify SHA hash
+#
 exodus_verify_hashes() {
-  #
-  # If JP's key doesn't exist...
-  if ! gpg --list-public-keys --with-colons --fixed-list-mode --with-fingerprint | grep -q '^fpr:::::::::12408650E2192FEBE4E7024C9D959455325B781A:$'
-  then
-    jpKey='https://keybase.io/jprichardson/pgp_keys.asc?fingerprint=12408650e2192febe4e7024c9d959455325b781a'
-    # ...Import JP Richardson's Public Key
-    curl -s $jpKey | gpg --import -q
-    if ! [ $? -eq 0 ]; then
-      return 1
+    gpg --list-public-keys --with-colons --fixed-list-mode --with-fingerprint \
+        | grep -q '^fpr:::::::::4CE260E8D65DF43CE88D25F212DC27133D25FAFA:$'
+    FINGERPRINT1=$?
+    gpg --list-public-keys --with-colons --fixed-list-mode --with-fingerprint \
+        | grep -q '^fpr:::::::::4CE260E8D65DF43CE88D25F212DC27133D25FAFA:$'
+    FINGERPRINT2=$?
+
+    # If public keys do not exist, import them first.
+    if  [ $FINGERPRINT1 -ne 0 ] || [ $FINGERPRINT2 -ne 0 ]
+    then
+        curl https://keybase.io/exodusmovement/pgp_keys.asc | gpg --import
+        if ! [ $? -eq 0 ]; then
+            return 1
+        fi
+
+        curl https://keybase.io/jprichardson/pgp_keys.asc | gpg --import
+        if ! [ $? -eq 0 ]; then
+            return 1
+        fi
     fi
-  fi
 
-  local HASHES=`exodus_download_url hashes-exodus${EDEN_DOWNLOAD_INFIX}-$1.txt`
-  curl -s $HASHES | gpg --verify
-  if ! [ $? -eq 0 ]; then
-    return 1
-  fi
-  from_hash=`curl -s $HASHES | grep linux | perl -lane 'print $F[0]'`
-  to_hash=`sha256sum $2 | perl -lane 'print $F[0]'`
-  test "$from_hash" == "$to_hash"
-  return $?
+    local HASHES=`exodus_download_url hashes-exodus-$1.txt`
+    curl -s $HASHES | gpg --verify
+    if ! [ $? -eq 0 ]; then
+        return 1
+    fi
+    from_hash=`curl -s $HASHES | grep linux | perl -lane 'print $F[0]'`
+    to_hash=`sha256sum $2 | perl -lane 'print $F[0]'`
+    test "$from_hash" == "$to_hash"
+    return $?
 }
-
 
 # Install the exodus package to the /opt folder
 #
 exodus_install() {
-  if [ "$SUDO" != "" ]; then
-    echo "Running commands with SUDO..."
-  fi
+    if [ "$SUDO" != "" ]; then
+        echo "Running commands with SUDO..."
+    fi
 
-  # extract files & create link
-  $SUDO unzip -d /opt/ $1
-  $SUDO mv /opt/Exodus${EDEN_BIN_SUFFIX}-linux-* /opt/exodus${EDEN_DOWNLOAD_INFIX}
-  $SUDO ln -s -f /opt/exodus${EDEN_DOWNLOAD_INFIX}/Exodus${EDEN_BIN_SUFFIX} /usr/bin/Exodus${EDEN_BIN_SUFFIX}
+    # extract files & create link
+    $SUDO unzip -d /opt/ $1
+    $SUDO mv /opt/Exodus-linux-${PROCESSOR} /opt/exodus
+    $SUDO ln -s -f /opt/exodus/Exodus ${EXODUS_LOCATION}bin/${EXODUS_BIN}
 
-  # register exodus://
-  $SUDO update-desktop-database > /dev/null 2>&1
+    # Create desktop file and install icon.
+    local EXODUS_VERSION=`${EXODUS_BIN} --version`
+    local EXODUS_DESKTOP=`exodus_desktop_contents ${EXODUS_VERSION}`
 
-  # update icons
-  $SUDO gtk-update-icon-cache /usr/share/icons/hicolor -f > /dev/null 2>&1
+    $SUDO printf "%s" "${EXODUS_DESKTOP}" | \
+        $SUDO tee ${EXODUS_LOCATION}share/applications/${EXODUS_BIN}.desktop > \
+        /dev/null
+
+    # Add icon
+    $SUDO wget -v -c -O ${EXODUS_LOCATION}share/icons/hicolor/scalable/apps/${EXODUS_BIN}.svg \
+        $(exodus_svg_download_url)
+
+    # register exodus://
+    $SUDO update-desktop-database > /dev/null 2>&1
+
+    # update icons
+    $SUDO gtk-update-icon-cache ${EXODUS_LOCATION}share/icons/hicolor -f > \
+        /dev/null 2>&1
 }
-
 
 # Check to see if Exodus is installed
 #
 exodus_is_installed() {
-  which Exodus${EDEN_BIN_SUFFIX} > /dev/null 2>&1
+    which ${EXODUS_BIN} > /dev/null 2>&1
 }
-
 
 # Uninstall the application completely
 #
 exodus_uninstall() {
-  if [ "$SUDO" != "" ]; then
-    echo "Running commands with SUDO..."
-  fi
+    if [ "$SUDO" != "" ]; then
+        echo "Running commands with SUDO..."
+    fi
 
-  # remove app files
-  $SUDO rm -f /usr/bin/Exodus${EDEN_BIN_SUFFIX}
-  $SUDO rm -rf /opt/exodus${EDEN_DOWNLOAD_INFIX}
-  $SUDO rm -f /usr/share/applications/Exodus${EDEN_BIN_SUFFIX}.desktop
-  $SUDO find /usr/share/icons/hicolor/ -type f -name *Exodus.png -delete
+    # remove app files
+    $SUDO rm -f ${EXODUS_LOCATION}bin/${EXODUS_BIN}
+    $SUDO rm -rf /opt/exodus
+    $SUDO rm -f ${EXODUS_LOCATION}share/applications/${EXODUS_BIN}.desktop
+    $SUDO rm -f ${EXODUS_LOCATION}share/icons/hicolor/scalable/apps/${EXODUS_BIN}.svg
 
-  # drop exodus://
-  $SUDO update-desktop-database > /dev/null 2>&1
+    # drop exodus://
+    $SUDO update-desktop-database > /dev/null 2>&1
 
-  # update icons
-  $SUDO gtk-update-icon-cache /usr/share/icons/hicolor -f > /dev/null 2>&1
+    # update icons
+    $SUDO gtk-update-icon-cache ${EXODUS_LOCATION}share/icons/hicolor -f > /dev/null 2>&1
 }
-
 
 # Do the actual installation procedure, calling the above functions when needed.
 #
@@ -148,17 +181,17 @@ exodus_uninstall() {
 # Or, we can check to see if Exodus is installed.
 #
 exodus_installer() {
-  if [ $# -lt 1 ]; then
-    $0 --help
-    return 0
-  fi
+    if [ $# -lt 1 ]; then
+        $0 --help
+        return 0
+    fi
 
-  local COMMAND
-  COMMAND=$1
-  shift
+    local COMMAND
+    COMMAND=$1
+    shift
 
-  case $COMMAND in
-    'help' | '--help' )
+    case $COMMAND in
+        'help' | '--help' )
       cat << EOF
 
 Exodus installer v$INSTALLER_VERSION
@@ -166,85 +199,83 @@ Exodus installer v$INSTALLER_VERSION
 Usage:
 
   $0 --help                 Print this message
-  $0 install <version|file> Install Exodus from file or download and install <version>
+  $0 install <version|file> Install Exodus from <file> or download and install <version>
   $0 check                  Check that Exodus is installed and print installed version
   $0 uninstall              Remove Exodus
 
 Example:
 
-  $0 install ~/Downloads/exodus_linux_1.4.0.zip   Install Exodus 1.4.0 from file
-  $0 install 1.4.0                                Download and install Exodus 1.4.0
+  $0 install ~/Downloads/exodus-linux-x64-19.4.26.zip Install Exodus 19.4.26 from file
+  $0 install 19.4.26                                  Download and install Exodus 19.4.26
 
 EOF
-    ;;
-    'install' | 'i' )
-      if [ $# -ne 1 ]; then
-        >&2 $0 --help
-        return 127
-      fi
+        ;;
+        'install' | 'i' )
+            if [ $# -ne 1 ]; then
+                >&2 $0 --help
+                return 127
+            fi
 
-      if exodus_is_installed; then
-        >&2 echo 'Exodus'${EDEN_BIN_SUFFIX}' already installed.'
-        return 1
-      fi
+            if exodus_is_installed; then
+                >&2 echo 'Exodus already installed.'
+                return 1
+            fi
 
-      local EXODUS_PKG
-      if [[ $# -eq 1 && -f $1 ]]; then
-        EXODUS_PKG=$1
-      else
-        local EXODUS_FILENAME=`exodus_filename $1`
-        EXODUS_PKG=`exodus_download_target ${EXODUS_FILENAME}`
-        local EXODUS_URL=`exodus_download_url ${EXODUS_FILENAME}`
-        exodus_download $EXODUS_URL $EXODUS_PKG
-        if [ $? -ne 0 ]; then
-          return 1
-        fi
-      fi
+            local EXODUS_PKG
+            if [[ $# -eq 1 && -f $1 ]]; then
+                EXODUS_PKG=$1
+            else
+                local EXODUS_FILENAME=`exodus_filename $1`
+                EXODUS_PKG=`exodus_download_target ${EXODUS_FILENAME}`
+                local EXODUS_URL=`exodus_download_url ${EXODUS_FILENAME}`
+                exodus_download $EXODUS_URL $EXODUS_PKG
+                if [ $? -ne 0 ]; then
+                    return 1
+                fi
+            fi
 
-      if ! exodus_verify_hashes $1 $EXODUS_PKG; then
-        echo "$EXODUS_PKG has failed the hashing checksum! Aborting installation!"
-        return 1
-      fi
+            if ! exodus_verify_hashes $1 $EXODUS_PKG; then
+                echo "$EXODUS_PKG has failed the hashing checksum! Aborting installation!"
+                return 1
+            fi
 
-      if ! unzip -t $EXODUS_PKG > /dev/null; then
-        echo "$EXODUS_PKG failed the SHA check, and is a corrupt file! Please remove and redownload!"
-        return 1
-      fi
+            if ! unzip -t $EXODUS_PKG > /dev/null; then
+                echo "$EXODUS_PKG failed the SHA check, and is a corrupt file! Please remove and redownload!"
+                return 1
+            fi
 
-      exodus_install $EXODUS_PKG
-      return $?
-    ;;
-    'check' )
-      if [ $# -ne 0 ]; then
-        >&2 $0 --help
-        return 127
-      fi
+            exodus_install $EXODUS_PKG
+            return $?
+        ;;
+        'check' )
+            if [ $# -ne 0 ]; then
+                >&2 $0 --help
+                return 127
+            fi
 
-      exodus_is_installed
-      if [ $? -eq 1 ]; then
-        echo 'Exodus'${EDEN_BIN_SUFFIX}' is not installed.'
-      else
-        echo 'Exodus'${EDEN_BIN_SUFFIX}' is installed. Version: '`Exodus${EDEN_BIN_SUFFIX} --version`
-      fi
-    ;;
-    'uninstall' )
-      if [ $# -ne 0 ]; then
-        >&2 $0 --help
-        return 127
-      fi
+            exodus_is_installed
+            if [ $? -eq 1 ]; then
+                echo 'Exodus is not installed.'
+            else
+                echo 'Exodus is installed. Version: '`${EXODUS_BIN} --version`
+            fi
+        ;;
+        'uninstall' )
+            if [ $# -ne 0 ]; then
+                >&2 $0 --help
+                return 127
+            fi
 
-      exodus_uninstall
-      return $?
-    ;;
-    * )
-      >&2 $0 --help
-      return 127
-    ;;
-  esac
+            exodus_uninstall
+            return $?
+        ;;
+        * )
+            >&2 $0 --help
+            return 127
+        ;;
+    esac
 }
-
 
 # pass arguments to main function
 #
 exodus_installer $@
-
