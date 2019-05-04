@@ -123,20 +123,22 @@ exodus_install() {
     local EXODUS_VERSION=`${EXODUS_BIN} --version`
     local EXODUS_DESKTOP=`exodus_desktop_contents ${EXODUS_VERSION}`
 
+    $SUDO mkdir -p ${EXODUS_LOCATION}share/applications
     $SUDO printf "%s" "${EXODUS_DESKTOP}" | \
         $SUDO tee ${EXODUS_LOCATION}share/applications/${EXODUS_BIN}.desktop > \
         /dev/null
 
     # Add icon
-    $SUDO wget -v -c -O ${EXODUS_LOCATION}share/icons/hicolor/scalable/apps/${EXODUS_BIN}.svg \
+    $SUDO mkdir -p ${EXODUS_LOCATION}share/icons/hicolor/scalable/apps
+    $SUDO wget -v -c -O \
+        ${EXODUS_LOCATION}share/icons/hicolor/scalable/apps/${EXODUS_BIN}.svg \
         $(exodus_svg_download_url)
 
-    # register exodus://
-    $SUDO update-desktop-database > /dev/null 2>&1
+    # Update icon cache
+    $SUDO gtk-update-icon-cache -f /usr/share/icons/hicolor > /dev/null 2>&1
 
-    # update icons
-    $SUDO gtk-update-icon-cache -f ${EXODUS_LOCATION}share/icons/hicolor > \
-        /dev/null 2>&1
+    # Register application
+    $SUDO update-desktop-database > /dev/null 2>&1
 }
 
 # Check to see if Exodus is installed
@@ -156,13 +158,14 @@ exodus_uninstall() {
     $SUDO rm -f ${EXODUS_LOCATION}bin/${EXODUS_BIN}
     $SUDO rm -rf /opt/exodus
     $SUDO rm -f ${EXODUS_LOCATION}share/applications/${EXODUS_BIN}.desktop
-    $SUDO rm -f ${EXODUS_LOCATION}share/icons/hicolor/scalable/apps/${EXODUS_BIN}.svg
+    $SUDO rm -f \
+        ${EXODUS_LOCATION}share/icons/hicolor/scalable/apps/${EXODUS_BIN}.svg
 
-    # drop exodus://
+    # Update icon cache
+    $SUDO gtk-update-icon-cache -f /usr/share/icons/hicolor > /dev/null 2>&1
+
+    # Drop application
     $SUDO update-desktop-database > /dev/null 2>&1
-
-    # update icons
-    $SUDO gtk-update-icon-cache -f ${EXODUS_LOCATION}share/icons/hicolor > /dev/null 2>&1
 }
 
 # Do the actual installation procedure, calling the above functions when needed.
