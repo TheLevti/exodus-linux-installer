@@ -33,7 +33,7 @@ exodus_download_url() {
 #
 exodus_svg_download_url()
 {
-    echo 'https://www.exodus.io/brand/images/exodus-logo.svg'
+    echo 'https://raw.githubusercontent.com/TheLevti/exodus-linux-installer/master/exodus.svg'
 }
 
 # Generate content for the desktop file.
@@ -135,7 +135,7 @@ exodus_install() {
     $SUDO update-desktop-database > /dev/null 2>&1
 
     # update icons
-    $SUDO gtk-update-icon-cache ${EXODUS_LOCATION}share/icons/hicolor -f > \
+    $SUDO gtk-update-icon-cache -f ${EXODUS_LOCATION}share/icons/hicolor > \
         /dev/null 2>&1
 }
 
@@ -162,7 +162,7 @@ exodus_uninstall() {
     $SUDO update-desktop-database > /dev/null 2>&1
 
     # update icons
-    $SUDO gtk-update-icon-cache ${EXODUS_LOCATION}share/icons/hicolor -f > /dev/null 2>&1
+    $SUDO gtk-update-icon-cache -f ${EXODUS_LOCATION}share/icons/hicolor > /dev/null 2>&1
 }
 
 # Do the actual installation procedure, calling the above functions when needed.
