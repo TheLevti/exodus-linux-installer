@@ -42,7 +42,7 @@ exodus_filename() {
 # This can change, so we have to make sure this is "up to date"
 #
 exodus_download_url() {
-    echo 'https://exodusbin.azureedge.net/releases/'$1
+    echo 'https://downloads.exodus.com/releases/'$1
 }
 
 # Generate the download URL for the svg icon.
@@ -117,7 +117,8 @@ exodus_verify_hashes() {
     if ! [ $? -eq 0 ]; then
         return 1
     fi
-    from_hash=`curl -s $HASHES | grep linux | perl -lane 'print $F[0]'`
+    filename=`exodus_filename $1`
+    from_hash=`curl -s $HASHES | grep $filename | perl -lane 'print $F[0]'`
     to_hash=`sha256sum $2 | perl -lane 'print $F[0]'`
     test "$from_hash" == "$to_hash"
     return $?
